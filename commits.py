@@ -1,12 +1,9 @@
 import sqlite3
-from dotenv import load_dotenv
 import os
 import logging
 from sqlops import *
 from utils import is_directory_empty_of_files
 import subprocess
-
-load_dotenv()
 
 def add_content(added: list):
 

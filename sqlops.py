@@ -5,8 +5,6 @@ from dotenv import load_dotenv
 import markdown
 from bs4 import BeautifulSoup
 
-load_dotenv()
-
 def create_column(dirpath: str) -> int:
 
     # current date is served as the 'uptime'
@@ -254,5 +252,4 @@ def remove_column(dirpath: str):
     
 
 if __name__ == '__main__':
-    load_dotenv()
     create_column('hello')
