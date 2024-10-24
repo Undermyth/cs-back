@@ -1,6 +1,9 @@
 # environment is ignored
 env.sh
 
+# secret is not stored for safety reason
+SECRET
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

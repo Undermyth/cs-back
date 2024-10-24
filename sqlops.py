@@ -1,7 +1,6 @@
 import sqlite3
 import os
 import datetime
-from dotenv import load_dotenv
 import markdown
 from bs4 import BeautifulSoup
 
@@ -24,8 +23,9 @@ def create_column(dirpath: str) -> int:
                    (new_id, dirpath))
     conn.commit()
     conn.close()
+    return new_id
 
-def fill_column(column_id: int, filepath: str):
+def fill_column(column_id: int, filepath: str, logger):
     """fill the column information with readme.md
 
     Args:
@@ -34,6 +34,7 @@ def fill_column(column_id: int, filepath: str):
     """
     # TODO: not tested
 
+    logger.info(f"adding readme to column {column_id}")
     file = os.path.join(os.getenv("NOTE_REPO_PATH"), filepath)
     with open(file) as f:
         text = f.read()
@@ -49,13 +50,18 @@ def fill_column(column_id: int, filepath: str):
     conn.commit()
     conn.close()
 
-def find_column(dirpath: str) -> int:
+def find_column(dirpath: str):
 
     conn = sqlite3.connect(os.path.join(os.getenv("DB_PATH"), "main.db"))
     cursor = conn.execute('select id from columns where dirpath = ?;', (dirpath,))
-    id = next(cursor)[0]
-    conn.close()
-    return id
+    try:
+        id = next(cursor)[0]
+        conn.close()
+        return id
+    except:
+        # the column is not found
+        conn.close()
+        return None
 
 def generate_id():
     now = datetime.datetime.now()
@@ -67,29 +73,35 @@ def generate_id():
         if row[0] // 100 == int(date) and row[0] > max_id:
             max_id = row[0]
     max_id = max_id + 1
-    print(max_id)
+    return max_id
 
-def add_article(column_id: int, filepath: str):
+def add_article(column_id: int, filepath: str, logger):
     """add an article to an existing column
 
     Args:
         column_id (int): id of the column to be add
         filepath (str): "<column_name>/<filename>"
     """    
+    logger.info(f"adding new article {filepath} to column {column_id}")
     new_id = generate_id()
+    logger.info(f"new id {new_id} generated for new article")
 
     # get title and abstract from README.md
     file = os.path.join(os.getenv("NOTE_REPO_PATH"), filepath)
+    logger.info(f"adding file {file} to database")
     with open(file, 'r', encoding='utf-8') as f:
         text = f.read()
         length = len(text)
         html_text = markdown.markdown(text)
-        title = html_text.h1.string
+        soup = BeautifulSoup(html_text, "lxml")
+        title = soup.h1.string
+    with open(file, 'r', encoding='utf-8') as f:
         lines = f.readlines()
         contents = lines[1:]
         abstract = " ".join(contents).strip()
-        if len(abstract) > 50:
-            abstract = abstract[:50]
+        if len(abstract) > 100:
+            abstract = abstract[:100]
+    abstract = abstract.replace("\n", "").replace("\r", "")
     
     # insert new article
     conn = sqlite3.connect(os.path.join(os.getenv("DB_PATH"), "main.db"))
@@ -109,8 +121,9 @@ def add_log(filepath: str):
         html_text = markdown.markdown(text)
         soup = BeautifulSoup(html_text, 'lxml')
         title = soup.h1.string
-        abstract = soup.p.string
         num_of_logs = len(soup.find_all('h2'))
+    with open(file, 'r', encoding='utf-8') as f:
+        abstract = f.readlines()[1]
 
     # get a new id
     conn = sqlite3.connect(os.path.join(os.getenv("DB_PATH"), "main.db"))
@@ -134,7 +147,7 @@ def update_log(filepath: str):
 
     # get the id of the log
     conn = sqlite3.connect(os.path.join(os.getenv("DB_PATH"), "main.db"))
-    cursor = conn.execute('select id from logs where filepath = ?', filepath)
+    cursor = conn.execute('select id from logs where filepath = ?;', (filepath,))
     id = next(cursor)[0]
 
     # get title number of logs and abstract from README.md
@@ -144,8 +157,9 @@ def update_log(filepath: str):
         html_text = markdown.markdown(text)
         soup = BeautifulSoup(html_text, 'lxml')
         title = soup.h1.string
-        abstract = soup.p.string
         num_of_logs = len(soup.find_all('h2'))
+    with open(file, 'r', encoding='utf-8') as f:
+        abstract = f.readlines()[1]
 
     cursor = conn.cursor()
     cursor.execute('update logs set \
@@ -160,20 +174,24 @@ def update_article(filepath: str):
 
     # get the id of the article
     conn = sqlite3.connect(os.path.join(os.getenv("DB_PATH"), "main.db"))
-    cursor = conn.execute('select id, columnid from articles where filepath = ?', filepath)
+    cursor = conn.execute('select id, columnid from articles where filepath = ?;', (filepath,))
     article_id, column_id = next(cursor)
 
     # get title and abstract from README.md
     file = os.path.join(os.getenv("NOTE_REPO_PATH"), filepath)
     with open(file, 'r', encoding='utf-8') as f:
         text = f.read()
+        length = len(text)
         html_text = markdown.markdown(text)
-        title = html_text.h1.string
+        soup = BeautifulSoup(html_text, "lxml")
+        title = soup.h1.string
+    with open(file, 'r', encoding='utf-8') as f:
         lines = f.readlines()
         contents = lines[1:]
         abstract = " ".join(contents).strip()
-        if len(abstract) > 50:
-            abstract = abstract[:50]
+        if len(abstract) > 100:
+            abstract = abstract[:100]
+    abstract = abstract.replace("\n", "").replace("\r", "")
 
     cursor = conn.cursor()
     cursor.execute('update articles set \
@@ -214,7 +232,7 @@ def remove_log(filepath: str):
 
     # get the id of the log
     conn = sqlite3.connect(os.path.join(os.getenv("DB_PATH"), "main.db"))
-    cursor = conn.execute('select id from logs where filepath = ?', filepath)
+    cursor = conn.execute('select id from logs where filepath = ?;', (filepath,))
     id = next(cursor)[0]
 
     cursor = conn.cursor()
@@ -228,7 +246,7 @@ def remove_article(filepath: str):
 
     # get the id of the article
     conn = sqlite3.connect(os.path.join(os.getenv("DB_PATH"), "main.db"))
-    cursor = conn.execute('select id from articles where filepath = ?', filepath)
+    cursor = conn.execute('select id from articles where filepath = ?;', (filepath,))
     id = next(cursor)[0]
 
     cursor = conn.cursor()
@@ -236,14 +254,18 @@ def remove_article(filepath: str):
     conn.commit()
     conn.close()
 
-def remove_column(dirpath: str):
+def remove_column(dirpath: str, logger):
 
     # TODO: not tested
 
     # get the id of the column
     conn = sqlite3.connect(os.path.join(os.getenv("DB_PATH"), "main.db"))
     cursor = conn.execute('select id from columns where dirpath = ?;', (dirpath,))
-    id = next(cursor)[0]
+    try:
+        id = next(cursor)[0]
+    except:
+        logger.info(f"column with path {dirpath} is already removed.")
+        return
 
     cursor = conn.cursor()
     cursor.execute('delete from columns where id = ?;', (id,))

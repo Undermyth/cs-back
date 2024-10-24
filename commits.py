@@ -1,11 +1,9 @@
-import sqlite3
 import os
 import logging
 from sqlops import *
 from utils import is_directory_empty_of_files
-import subprocess
 
-def add_content(added: list):
+def add_content(added: list, logger):
 
     # TODO: requirements:
     # 0. the content is in assets
@@ -25,27 +23,34 @@ def add_content(added: list):
     for new_file in added:
     
         path = os.getenv("NOTE_REPO_PATH")
-        splitted_path = os.path.split(new_file)
+        splitted_path = new_file.split('/')
         # case 0 & 4
         if len(splitted_path) < 2:
-            logging.warning("File " + new_file + " is placed directly in the root directory. \
+            logger.info("File " + new_file + " is placed directly in the root directory. \
                             It will be saved but will be ignored in the database.")
             continue
         elif len(splitted_path) > 2:
             if splitted_path[1] == "assets" and len(splitted_path) == 3:
                 continue
-            logging.error("The path of " + new_file + " is too deep. \
+            logger.info("The path of " + new_file + " is too deep. \
                            It will be ignored in the database.")
+            continue
+        # do not deal with hidden files (like .git, .obsidian)
+        if splitted_path[0][0] == ".":
+            logger.info(f"The file {new_file} is in a hidden directory. Skipped.")
             continue
         dirname, filename = splitted_path
 
+        logger.info(f"addition of {new_file} is to be read into database.")
         # case 3 | case 1 & 2
-        if find_column(dirname) is None:
+        if dirname != "logs" and find_column(dirname) is None:
+            logger.info(f"creating new column with the path {dirname}")
             column_id = create_column(dirname)
+            logger.info(f"new column {dirname} is given id {column_id}")
             if filename.lower() == "readme.md":
-                fill_column(column_id, new_file)
+                fill_column(column_id, new_file, logger)
             else:
-                add_article(column_id, new_file)
+                add_article(column_id, new_file, logger)
         else:
             # case 2 | case 1
             if dirname == "logs":
@@ -54,12 +59,12 @@ def add_content(added: list):
                 column_id = find_column(dirname)
                 # case 1: combine 1.1 and 1.2, 'others' are treated as a column
                 if filename.lower() == "readme.md":
-                    fill_column(column_id, new_file)
+                    fill_column(column_id, new_file, logger)
                 else:
-                    add_article(column_id, new_file)
+                    add_article(column_id, new_file, logger)
 
 
-def modify_content(modified: list):
+def modify_content(modified: list, logger):
 
     # TODO: requirements:
     # 1. the file is in assets
@@ -72,20 +77,25 @@ def modify_content(modified: list):
     for changed_file in modified:
 
         path = os.getenv("NOTE_REPO_PATH")
-        splitted_path = os.path.split(new_file)
+        splitted_path = changed_file.split('/')
         # case 1 & 4
         if len(splitted_path) < 2:
-            logging.warning("File " + new_file + " is placed directly in the root directory. \
+            logging.warning("File " + changed_file + " is placed directly in the root directory. \
                             It will be saved but will be ignored in database modification.")
             continue
         elif len(splitted_path) > 2:
             if splitted_path[1] == "assets" and len(splitted_path) == 3:
                 continue
-            logging.error("The path of " + new_file + " is too deep. \
+            logging.error("The path of " + changed_file + " is too deep. \
                            It will be ignored in database modification.")
+            continue
+        # do not deal with hidden files (like .git, .obsidian)
+        if splitted_path[0][0] == ".":
+            logger.info(f"The file {changed_file} is in a hidden directory. Skipped.")
             continue
         dirname, filename = splitted_path
 
+        logger.info(f"modification of {changed_file} is to be read into database.")
         # case 3 | case 2
         if dirname == "logs":
             update_log(changed_file)
@@ -96,7 +106,7 @@ def modify_content(modified: list):
             else:
                 update_article(changed_file)
 
-def remove_content(removed: list):
+def remove_content(removed: list, logger):
 
     # TODO: requirements:
     # 1. the file is in assets
@@ -110,21 +120,26 @@ def remove_content(removed: list):
     for removed_file in removed:
 
         path = os.getenv("NOTE_REPO_PATH")
-        splitted_path = os.path.split(removed_file)
+        splitted_path = removed_file.split('/')
         # case 1 & 4
         if len(splitted_path) < 2:
-            logging.warning("File " + new_file + " is placed directly in the root directory. \
+            logger.warning("File " + removed_file + " is placed directly in the root directory. \
                             this remove will be ignored in database modification.")
             continue
         elif len(splitted_path) > 2:
             if splitted_path[1] == "assets" and len(splitted_path) == 3:
                 continue
             # actually impossible to reach here
-            logging.error("The path of " + new_file + " is too deep. \
+            logger.error("The path of " + removed_file + " is too deep. \
                            It will be ignored in database modification.")
+            continue
+        # do not deal with hidden files (like .git, .obsidian)
+        if splitted_path[0][0] == ".":
+            logger.info(f"The file {removed_file} is in a hidden directory. Skipped.")
             continue
         dirname, filename = splitted_path
 
+        logger.info(f"removal of file {removed_file} is to be read into database.")
         # case 3 | case 2
         if dirname == "logs":
             remove_log(removed_file)
@@ -134,9 +149,10 @@ def remove_content(removed: list):
             else:
                 dirpath = os.path.join(os.getenv("NOTE_REPO_PATH"), dirname)
                 # case 2.1 | case 2.2
-                if is_directory_empty_of_files(dirpath):
+                if not os.path.exists(dirpath) or is_directory_empty_of_files(dirpath):
                     remove_article(removed_file)
-                    remove_column(dirname)
+                    logger.info(f"the column {dirpath} is empty. removing the column from database")
+                    remove_column(dirname, logger)
                 else:
                     remove_article(removed_file)
  
